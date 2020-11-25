@@ -9,6 +9,7 @@ import android.content.SharedPreferences;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
+import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.Menu;
@@ -16,6 +17,7 @@ import android.view.MenuItem;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -27,6 +29,8 @@ import java.io.IOException;
 import java.net.ResponseCache;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import okhttp3.Call;
 import okhttp3.Callback;
@@ -43,6 +47,9 @@ public class MainActivity extends AppCompatActivity {
     EditText adcode;
     TextView province,city,weather,temperature,humidity,reporttime;
     Weather weatherObject;
+    ImageView pic;
+    String provinceInfo,cityInfo,adcodeInfo,weatherInfo,temperatureInfo,humidityInfo,reporttimeInfo;
+    boolean ok=false;//表示jason解析是否成功
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -52,6 +59,7 @@ public class MainActivity extends AppCompatActivity {
 
         btnUpdate=(Button)findViewById(R.id.update);
         btnQuery=(Button)findViewById(R.id.query);
+        pic=(ImageView)findViewById(R.id.pic);
         adcode=(EditText)findViewById(R.id.adcode);
         province=(TextView)findViewById(R.id.province);
         city=(TextView)findViewById(R.id.city);
@@ -68,7 +76,9 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onClick(View v) {
                 String inputCode=adcode.getText().toString();
-                if(inputCode.length()!=6){
+                Pattern pattern=Pattern.compile("[0-9]{6}");
+                Matcher matcher=pattern.matcher(inputCode);
+                if(!matcher.matches()){
                     Toast.makeText(MainActivity.this,"adcode必须为6位",Toast.LENGTH_SHORT).show();
                 }
                 else {
@@ -78,22 +88,45 @@ public class MainActivity extends AppCompatActivity {
                     if(cursor.getCount()!=0){
                         cursor.moveToNext();
                         if(cursor.getString(cursor.getColumnIndex("province"))!=null){
-                            String strWea="天气状况："+cursor.getString(cursor.getColumnIndex("weather"));
-                            String strTem="温度:"+cursor.getString(cursor.getColumnIndex("temperature"));
-                            String strHum="湿度："+cursor.getString(cursor.getColumnIndex("humidity"));
-                            String strRepo="时间："+cursor.getString(cursor.getColumnIndex("reporttime"));
+                            String strwea="天气状况："+cursor.getString(cursor.getColumnIndex("weather"));
+                            String sttem="温度:"+cursor.getString(cursor.getColumnIndex("temperature"));
+                            String strhum="湿度："+cursor.getString(cursor.getColumnIndex("humidity"));
+                            String strrepo="时间："+cursor.getString(cursor.getColumnIndex("reporttime"));
                             province.setText(cursor.getString(cursor.getColumnIndex("province")));
                             city.setText(cursor.getString(cursor.getColumnIndex("city")));
-                            weather.setText(strWea);
-                            temperature.setText(strTem);
-                            humidity.setText(strHum);
-                            reporttime.setText(strRepo);
+                            weather.setText(strwea);
+                            temperature.setText(sttem);
+                            humidity.setText(strhum);
+                            reporttime.setText(strrepo);
+                            if (weatherInfo.contains("云")){
+                                pic.setImageResource(R.drawable.yun);
+                            }
+                            else if(weatherInfo.contains("雨")){
+                                pic.setImageResource(R.drawable.rain);
+                            }
+                            else if(weatherInfo.contains("雪")){
+                                pic.setImageResource(R.drawable.snow);
+                            }
+                            else if(weatherInfo.contains("阴")){
+                                pic.setImageResource(R.drawable.yin);
+                            }
+                            else {
+                                pic.setImageResource(R.drawable.sun);
+                            }
                         }
                     }
 
                     //在线API读取天气
                     else {
                         getDataAsync(inputCode);
+                        if(ok){
+                            //若jason解析成功，将新的天气信息插入数据库
+                            insertIntoDB();
+                        }
+                        else{
+                            Toast.makeText(MainActivity.this,"adcode error!",Toast.LENGTH_SHORT).show();
+                        }
+
                     }
                 }
                 
@@ -104,10 +137,26 @@ public class MainActivity extends AppCompatActivity {
          * 点击更新按钮在线API查询，并更新到数据库中
          * */
         btnUpdate.setOnClickListener(new View.OnClickListener() {
-            String inputCode=adcode.getText().toString();
             @Override
             public void onClick(View v) {
-                getDataAsync(inputCode);
+                String input=adcode.getText().toString();
+                Pattern pattern=Pattern.compile("[0-9]{6}");
+                Matcher matcher=pattern.matcher(input);
+                if(!matcher.matches()){
+                    Toast.makeText(MainActivity.this,"adcode必须为6位",Toast.LENGTH_SHORT).show();
+                }
+                else{
+                    getDataAsync(input);
+                    //json解析失败就不更新
+                    if(ok){
+                        //更新原来的数据库
+                        updateDB();
+                    }
+                    else{
+                        Toast.makeText(MainActivity.this,"adcode error!",Toast.LENGTH_SHORT).show();
+                    }
+                }
+
             }
         });
     }
@@ -174,11 +223,19 @@ public class MainActivity extends AppCompatActivity {
                 if(response.isSuccessful()){
                     Log.i("okhttp","————————获取数据成功———————");
                     String responseData=response.body().string();
-
-                    //解析json数据
-                    parseJsonWithFastJson(responseData);
-                    //在UI线程中更新内容
-                    showResponse(responseData);
+                    int dataLength=responseData.length();
+                    Log.i("okhttp","————————数据长度："+dataLength+"——————————————");
+                    //数据长度小于100表示输入的adcode不正确
+                    if(dataLength>100){
+                        ok=true;
+                        //解析json数据
+                        parseJsonWithFastJson(responseData);
+                        //在UI线程中更新内容
+                        showResponse(responseData);
+                    }
+                    else{
+                        ok=false;
+                    }
                 }
             }
         });
@@ -199,17 +256,40 @@ public class MainActivity extends AppCompatActivity {
                 String strTem="温度:"+lives.getTemperature();
                 String strHum="湿度："+lives.getHumidity();
                 String strRepo="时间："+lives.getReporttime();
+                if (lives.getWeather().contains("云")){
+                    pic.setImageResource(R.drawable.yun);
+                }
+                else if(lives.getWeather().contains("雨")){
+                    pic.setImageResource(R.drawable.rain);
+                }
+                else if(lives.getWeather().contains("雪")){
+                    pic.setImageResource(R.drawable.snow);
+                }
+                else if(lives.getWeather().contains("阴")){
+                    pic.setImageResource(R.drawable.yin);
+                }
+                else {
+                    pic.setImageResource(R.drawable.sun);
+                }
                 province.setText(lives.getProvince());
                 city.setText(lives.getCity());
                 weather.setText(strWea);
                 temperature.setText(strTem);
                 humidity.setText(strHum);
                 reporttime.setText(strRepo);
-                //插入到数据库中
-                insertIntoDB(lives);
+
+                //更新class中的字符串用来传参
+                provinceInfo=lives.getProvince();
+                cityInfo=lives.getCity();
+                adcodeInfo=lives.getAdcode();
+                weatherInfo=lives.getWeather();
+                temperatureInfo=lives.getTemperature();
+                humidityInfo=lives.getHumidity();
+                reporttimeInfo=lives.getReporttime();
             }
         });
     }
+
     /**
      * 使用fastJson解析数据
      * */
@@ -227,17 +307,28 @@ public class MainActivity extends AppCompatActivity {
     /**
      * 将查询到的天气信息保存在数据库中
      * */
-    public void insertIntoDB(lives live){
-        ContentValues values=new ContentValues();
-        values.put("province",live.getProvince());
-        values.put("city",live.getCity());
-        values.put("adcode",live.getAdcode());
-        values.put("weather",live.getWeather());
-        values.put("temperature",live.getTemperature());
-        values.put("humidity",live.getHumidity());
-        values.put("reporttime",live.getReporttime());
-        db.insert("weather",null,values);
-        Toast.makeText(MainActivity.this,"已成功添加到数据库！",Toast.LENGTH_SHORT).show();
+    public void insertIntoDB() {
+        ContentValues values = new ContentValues();
+        values.put("province", provinceInfo);
+        values.put("city", cityInfo);
+        values.put("adcode", adcodeInfo);
+        values.put("weather", weatherInfo);
+        values.put("temperature", temperatureInfo);
+        values.put("humidity", humidityInfo);
+        values.put("reporttime", reporttimeInfo);
+        db.insert("weather", null, values);
+        Toast.makeText(MainActivity.this, "已成功添加到数据库！", Toast.LENGTH_SHORT).show();
 
+    }
+
+    /**
+     * 更新原有的天气信息
+     * */
+    public void updateDB(){
+        out.println("更新数据adcode——————————————————————"+adcodeInfo);
+        out.println("更新数据，weatherInfo———————————————————————"+weatherInfo);
+       db.execSQL("update weather set weather=?,temperature=?,humidity=?,reporttime=? where adcode=?"
+       ,new String[]{weatherInfo,temperatureInfo,humidityInfo,reporttimeInfo,adcodeInfo});
+        Toast.makeText(MainActivity.this, "更新数据库信息成功！", Toast.LENGTH_SHORT).show();
     }
 }
