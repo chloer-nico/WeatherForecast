@@ -19,10 +19,13 @@ import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import com.alibaba.fastjson.JSONObject;
+
 import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
 import java.net.ResponseCache;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 import okhttp3.Call;
@@ -39,6 +42,7 @@ public class MainActivity extends AppCompatActivity {
     Button btnUpdate,btnQuery;
     EditText adcode;
     TextView province,city,weather,temperature,humidity,reporttime;
+    Weather weatherObject;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -59,16 +63,6 @@ public class MainActivity extends AppCompatActivity {
         dbHelper=new MyDatabaseHelper(this,"weather.db",null,1);
         db=dbHelper.getWritableDatabase();
 
-        //暂时插入一条数据
-//        ContentValues values=new ContentValues();
-//        values.put("province","北京");
-//        values.put("city","朝阳区");
-//        values.put("adcode","110105");
-//        values.put("weather","阴");
-//        values.put("temperature","3");
-//        values.put("humidity","53");
-//        values.put("reporttime","2020-11-24 22:05:00");
-//        db.insert("weather",null,values);
 
         btnQuery.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -84,12 +78,16 @@ public class MainActivity extends AppCompatActivity {
                     if(cursor.getCount()!=0){
                         cursor.moveToNext();
                         if(cursor.getString(cursor.getColumnIndex("province"))!=null){
+                            String strWea="天气状况："+cursor.getString(cursor.getColumnIndex("weather"));
+                            String strTem="温度:"+cursor.getString(cursor.getColumnIndex("temperature"));
+                            String strHum="湿度："+cursor.getString(cursor.getColumnIndex("humidity"));
+                            String strRepo="时间："+cursor.getString(cursor.getColumnIndex("reporttime"));
                             province.setText(cursor.getString(cursor.getColumnIndex("province")));
                             city.setText(cursor.getString(cursor.getColumnIndex("city")));
-                            weather.setText(cursor.getString(cursor.getColumnIndex("weather")));
-                            temperature.setText(cursor.getString(cursor.getColumnIndex("temperature")));
-                            humidity.setText(cursor.getString(cursor.getColumnIndex("humidity")));
-                            reporttime.setText(cursor.getString(cursor.getColumnIndex("reporttime")));
+                            weather.setText(strWea);
+                            temperature.setText(strTem);
+                            humidity.setText(strHum);
+                            reporttime.setText(strRepo);
                         }
                     }
 
@@ -102,6 +100,16 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+        /**
+         * 点击更新按钮在线API查询，并更新到数据库中
+         * */
+        btnUpdate.setOnClickListener(new View.OnClickListener() {
+            String inputCode=adcode.getText().toString();
+            @Override
+            public void onClick(View v) {
+                getDataAsync(inputCode);
+            }
+        });
     }
     /**
      * 从数据库中读取是否存在当前城市的天气记录
@@ -151,7 +159,7 @@ public class MainActivity extends AppCompatActivity {
 
         //2.创建请求
         Request request=new Request.Builder()
-                .url("https://restapi.amap.com/v3/weather/weatherInfo?city=110101&key=a9948278454bf695b041c30914e29a03")
+                .url("https://restapi.amap.com/v3/weather/weatherInfo?city="+adcode+"&key=a9948278454bf695b041c30914e29a03")
                 .build();
         //3.call对象,4.以异步的方式执行
         client.newCall(request).enqueue(new Callback() {
@@ -167,6 +175,8 @@ public class MainActivity extends AppCompatActivity {
                     Log.i("okhttp","————————获取数据成功———————");
                     String responseData=response.body().string();
 
+                    //解析json数据
+                    parseJsonWithFastJson(responseData);
                     //在UI线程中更新内容
                     showResponse(responseData);
                 }
@@ -183,13 +193,51 @@ public class MainActivity extends AppCompatActivity {
         runOnUiThread(new Runnable() {
             @Override
             public void run() {
-//                province.setText("成功！！！");
-                province.setText(response);
+                List<lives> livesList=weatherObject.getLives();
+                lives lives=livesList.get(0);
+                String strWea="天气状况："+lives.getWeather();
+                String strTem="温度:"+lives.getTemperature();
+                String strHum="湿度："+lives.getHumidity();
+                String strRepo="时间："+lives.getReporttime();
+                province.setText(lives.getProvince());
+                city.setText(lives.getCity());
+                weather.setText(strWea);
+                temperature.setText(strTem);
+                humidity.setText(strHum);
+                reporttime.setText(strRepo);
+                //插入到数据库中
+                insertIntoDB(lives);
             }
         });
+    }
+    /**
+     * 使用fastJson解析数据
+     * */
+    public void parseJsonWithFastJson(String jsonData){
+        try {
+            //将json数据解析成Weather类型格式，必须建立完全对应的实体类
+            weatherObject=JSONObject.parseObject(jsonData,Weather.class);
+
+            Log.i("————解析以后的数据————",jsonData);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     /**
      * 将查询到的天气信息保存在数据库中
      * */
+    public void insertIntoDB(lives live){
+        ContentValues values=new ContentValues();
+        values.put("province",live.getProvince());
+        values.put("city",live.getCity());
+        values.put("adcode",live.getAdcode());
+        values.put("weather",live.getWeather());
+        values.put("temperature",live.getTemperature());
+        values.put("humidity",live.getHumidity());
+        values.put("reporttime",live.getReporttime());
+        db.insert("weather",null,values);
+        Toast.makeText(MainActivity.this,"已成功添加到数据库！",Toast.LENGTH_SHORT).show();
+
+    }
 }
