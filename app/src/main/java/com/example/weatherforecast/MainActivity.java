@@ -38,6 +38,7 @@ import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
 
+import static java.lang.System.in;
 import static java.lang.System.out;
 
 public class MainActivity extends AppCompatActivity {
@@ -49,6 +50,7 @@ public class MainActivity extends AppCompatActivity {
     Weather weatherObject;
     ImageView pic;
     String provinceInfo,cityInfo,adcodeInfo,weatherInfo,temperatureInfo,humidityInfo,reporttimeInfo;
+    String responData;
     boolean ok=false;//表示jason解析是否成功
 
     @Override
@@ -82,12 +84,16 @@ public class MainActivity extends AppCompatActivity {
                     Toast.makeText(MainActivity.this,"adcode必须为6位",Toast.LENGTH_SHORT).show();
                 }
                 else {
+                    Log.i("查询adcode：","————————————"+inputCode);
                     //首先从数据库中里面读取，没有再去读取在线API
                     Cursor cursor= queryDB(inputCode);
                     //没有数据就是0
+                    Log.i("CURSOR：","————————————"+cursor.getCount());
                     if(cursor.getCount()!=0){
+                        Log.i("读取数据库内容","————————————从数据库读取————————————");
                         cursor.moveToNext();
                         if(cursor.getString(cursor.getColumnIndex("province"))!=null){
+                            Toast.makeText(MainActivity.this, "从数据库读取内容", Toast.LENGTH_SHORT).show();
                             String strwea="天气状况："+cursor.getString(cursor.getColumnIndex("weather"));
                             String sttem="温度:"+cursor.getString(cursor.getColumnIndex("temperature"));
                             String strhum="湿度："+cursor.getString(cursor.getColumnIndex("humidity"));
@@ -98,16 +104,16 @@ public class MainActivity extends AppCompatActivity {
                             temperature.setText(sttem);
                             humidity.setText(strhum);
                             reporttime.setText(strrepo);
-                            if (weatherInfo.contains("云")){
+                            if (strwea.contains("云")){
                                 pic.setImageResource(R.drawable.yun);
                             }
-                            else if(weatherInfo.contains("雨")){
+                            else if(strwea.contains("雨")){
                                 pic.setImageResource(R.drawable.rain);
                             }
-                            else if(weatherInfo.contains("雪")){
+                            else if(strwea.contains("雪")){
                                 pic.setImageResource(R.drawable.snow);
                             }
-                            else if(weatherInfo.contains("阴")){
+                            else if(strwea.contains("阴")){
                                 pic.setImageResource(R.drawable.yin);
                             }
                             else {
@@ -119,6 +125,14 @@ public class MainActivity extends AppCompatActivity {
                     //在线API读取天气
                     else {
                         getDataAsync(inputCode);
+//                        getDataSysnc(inputCode);
+//                  延时等待查询结果
+                        try {
+                            Thread.sleep(3000);
+                        } catch (InterruptedException e) {
+                            e.printStackTrace();
+                        }
+
                         if(ok){
                             //若jason解析成功，将新的天气信息插入数据库
                             insertIntoDB();
@@ -147,8 +161,18 @@ public class MainActivity extends AppCompatActivity {
                 }
                 else{
                     getDataAsync(input);
+//                    getDataSysnc(input);
                     //json解析失败就不更新
+//                  延时等待查询结果
+                        try {
+                            Thread.sleep(3000);
+                        } catch (InterruptedException e) {
+                            e.printStackTrace();
+                        }
                     if(ok){
+                        Log.i("执行更新UI操作","--------执行更新UI操作");
+                        //在UI线程中更新内容
+                        showResponse(responData);
                         //更新原来的数据库
                         updateDB();
                     }
@@ -230,8 +254,7 @@ public class MainActivity extends AppCompatActivity {
                         ok=true;
                         //解析json数据
                         parseJsonWithFastJson(responseData);
-                        //在UI线程中更新内容
-                        showResponse(responseData);
+                        responData=responseData;
                     }
                     else{
                         ok=false;
@@ -239,6 +262,51 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         });
+    }
+
+    /**
+     * 通过同步的方式获取数据
+     * */
+    public void getDataSysnc (final String inputCode){
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try{
+                    //1.创建客户端
+                    OkHttpClient client=new OkHttpClient.Builder()
+                            .connectTimeout(8, TimeUnit.SECONDS)
+                            .readTimeout(8,TimeUnit.SECONDS)
+                            .build();
+
+                    //2.创建请求
+                    Request request=new Request.Builder()
+                            .url("https://restapi.amap.com/v3/weather/weatherInfo?city="+inputCode+"&key=a9948278454bf695b041c30914e29a03")
+                            .build();
+                    Response response=null;
+                    //得到response对象
+                    response=client.newCall(request).execute();
+                    if(response.isSuccessful()){
+                        Log.i("okhttp","————————获取数据成功———————");
+                        String responseData=response.body().string();
+                        int dataLength=responseData.length();
+                        Log.i("okhttp","————————数据长度："+dataLength+"——————————————");
+                        //数据长度小于100表示输入的adcode不正确
+                        if(dataLength>100){
+                            ok=true;
+                            //解析json数据
+                            parseJsonWithFastJson(responseData);
+                            //在UI线程中更新内容
+                            showResponse(responseData);
+                        }
+                        else{
+                            ok=false;
+                        }
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+        }).start();
     }
 
 
@@ -317,7 +385,7 @@ public class MainActivity extends AppCompatActivity {
         values.put("humidity", humidityInfo);
         values.put("reporttime", reporttimeInfo);
         db.insert("weather", null, values);
-        Toast.makeText(MainActivity.this, "已成功添加到数据库！", Toast.LENGTH_SHORT).show();
+//        Toast.makeText(MainActivity.this, "已成功添加到数据库！", Toast.LENGTH_SHORT).show();
 
     }
 
