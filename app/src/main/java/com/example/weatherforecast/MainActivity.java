@@ -1,6 +1,7 @@
 package com.example.weatherforecast;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 
 import android.content.ContentValues;
@@ -165,7 +166,7 @@ public class MainActivity extends AppCompatActivity {
                     //json解析失败就不更新
 //                  延时等待查询结果
                         try {
-                            Thread.sleep(3000);
+                            Thread.sleep(1000);
                         } catch (InterruptedException e) {
                             e.printStackTrace();
                         }
@@ -184,16 +185,7 @@ public class MainActivity extends AppCompatActivity {
             }
         });
     }
-    /**
-     * 从数据库中读取是否存在当前城市的天气记录
-     * */
-    public Cursor queryDB(String adcode){
 
-//        Cursor cursor=db.query("weather",null,
-//                "where adcode=?",new String[]{adcode}, null,null,null);
-        Cursor cursor=db.rawQuery("select * from weather where adcode=?",new String[]{adcode});
-        return  cursor;
-    }
 
     /**
      * 菜单显示
@@ -213,12 +205,33 @@ public class MainActivity extends AppCompatActivity {
         switch (item.getItemId()){
             case R.id.subCity:
                 Intent intent=new Intent(MainActivity.this,SubCity.class);
-                startActivity(intent);
+                startActivityForResult(intent,1);
                 break;
             default:break;
         }
         return true;
     }
+    /**
+     * 返回的订阅城市结果显示
+     * */
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if(requestCode==1){
+            if(resultCode==1){
+                assert data != null;
+                String adcode = data.getStringExtra("adcode");
+                getDataAsync(adcode);
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+                showResponse(responData);
+            }
+        }
+    }
+
     /**
      * 通过异步的方式获取数据
      * 参数：待查询的城市的adcode
@@ -398,5 +411,13 @@ public class MainActivity extends AppCompatActivity {
        db.execSQL("update weather set weather=?,temperature=?,humidity=?,reporttime=? where adcode=?"
        ,new String[]{weatherInfo,temperatureInfo,humidityInfo,reporttimeInfo,adcodeInfo});
         Toast.makeText(MainActivity.this, "更新数据库信息成功！", Toast.LENGTH_SHORT).show();
+    }
+
+    /**
+     * 从数据库中读取是否存在当前城市的天气记录
+     * */
+    public Cursor queryDB(String adcode){
+        Cursor cursor=db.rawQuery("select * from weather where adcode=?",new String[]{adcode});
+        return  cursor;
     }
 }

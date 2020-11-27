@@ -7,13 +7,23 @@ package com.example.weatherforecast;
 public class City {
     private String province;
     private String city;
+    private String adcode;
 
     public City() {
     }
 
-    public City(String province, String city) {
+    public City(String province, String city,String adcode) {
         this.province = province;
         this.city = city;
+        this.adcode=adcode;
+    }
+
+    public String getAdcode() {
+        return adcode;
+    }
+
+    public void setAdcode(String adcode) {
+        this.adcode = adcode;
     }
 
     public String getProvince() {

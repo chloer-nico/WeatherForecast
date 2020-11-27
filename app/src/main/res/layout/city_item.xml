@@ -38,5 +38,7 @@
                 android:gravity="center"
                 android:text="TextView" />
         </LinearLayout>
+
     </LinearLayout>
+
 </androidx.constraintlayout.widget.ConstraintLayout>
